@@ -31,6 +31,7 @@
   <button data-mode="present" class="on">Present</button>
   <button data-mode="future">Future</button>
 </div>
+  <div style="padding:0 10px 10px"><button id="flip" style="width:100%">🔄 Switch camera</button></div>
 <p id="status" style="padding:0 10px">Loading...</p>
 
 <script>
@@ -62,9 +63,7 @@ async function start(){
     await faceapi.nets.faceRecognitionNet.loadFromUri('models');
     status.textContent = "Models loaded. Starting camera...";
 
-    stream = await navigator.mediaDevices.getUserMedia(
-      { video:{ facingMode:'environment' }, audio:true });
-    video.srcObject = stream;
+    await startCamera();
 
     const labeled = [];
     for (const p of PEOPLE){
@@ -83,7 +82,31 @@ async function start(){
     status.textContent = "Error: " + e.message;
   }
 }
-video.addEventListener('play', () => { loop(); });
+let facing = 'environment';  // change to 'user' to start on the front camera
+
+async function startCamera(){
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  stream = await navigator.mediaDevices.getUserMedia({
+    video:{ facingMode:{ ideal:facing }, width:{ ideal:1280 }, height:{ ideal:720 } },
+    audio:true });
+  video.srcObject = stream;
+  try{
+    const track = stream.getVideoTracks()[0];
+    const caps = track.getCapabilities ? track.getCapabilities() : {};
+    if (caps.focusMode && caps.focusMode.includes('continuous'))
+      await track.applyConstraints({ advanced:[{ focusMode:'continuous' }] });
+  }catch(e){ console.warn('Focus control not available'); }
+}
+
+document.getElementById('flip').onclick = async () => {
+  if (mode === 'future'){ status.textContent = 'Leave Future mode before switching camera'; return; }
+  facing = facing === 'user' ? 'environment' : 'user';
+  await startCamera();
+};
+
+video.addEventListener('play', () => {
+  if (!window.looping){ window.looping = true; loop(); }
+});
 
 // ===== 3. DETECT + DRAW (name on top, details at bottom) =====
 async function loop(){
