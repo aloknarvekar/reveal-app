@@ -117,7 +117,7 @@ async function loop(){
       }
       const ctx = canvas.getContext('2d');
       if (matcher){
-        const opts = new faceapi.SsdMobilenetv1Options({ minConfidence:0.3 });
+        const opts = new faceapi.SsdMobilenetv1Options({ minConfidence:0.15});
         const faces = await faceapi.detectAllFaces(video, opts)
                         .withFaceLandmarks().withFaceDescriptors();
         status.textContent = "Faces found: " + faces.length;
