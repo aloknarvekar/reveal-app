@@ -82,7 +82,7 @@ async function start(){
     status.textContent = "Error: " + e.message;
   }
 }
-let facing = 'environment';  // change to 'user' to start on the front camera
+let facing = 'user';  // change to 'user' to start on the front camera
 
 async function startCamera(){
   if (stream) stream.getTracks().forEach(t => t.stop());
@@ -109,38 +109,52 @@ video.addEventListener('play', () => {
 });
 
 // ===== 3. DETECT + DRAW (name on top, details at bottom) =====
+const pad = document.createElement('canvas');
+const SCALE = 0.4;   // 0.4 = shrink more, 0.6 = shrink less
+
 async function loop(){
   try{
-    if (video.videoWidth){
-      if (canvas.width !== video.videoWidth){
-        canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+    if (video.videoWidth && matcher){
+      const w = video.videoWidth, h = video.videoHeight;
+      if (canvas.width !== w){
+        canvas.width = w; canvas.height = h;
+        pad.width = w; pad.height = h;
       }
+      const ox = w*(1-SCALE)/2, oy = h*(1-SCALE)/2;
+      const pctx = pad.getContext('2d');
+      pctx.fillStyle = '#808080';
+      pctx.fillRect(0,0,w,h);
+      pctx.drawImage(video, ox, oy, w*SCALE, h*SCALE);
+
+      const opts = new faceapi.SsdMobilenetv1Options({ minConfidence:0.2 });
+      const faces = await faceapi.detectAllFaces(pad, opts)
+                      .withFaceLandmarks().withFaceDescriptors();
+      status.textContent = "Faces found: " + faces.length;
       const ctx = canvas.getContext('2d');
-      if (matcher){
-        const opts = new faceapi.SsdMobilenetv1Options({ minConfidence:0.15});
-        const faces = await faceapi.detectAllFaces(video, opts)
-                        .withFaceLandmarks().withFaceDescriptors();
-        status.textContent = "Faces found: " + faces.length;
-        ctx.clearRect(0,0,canvas.width,canvas.height);
-        for (const f of faces){
-          const m = matcher.findBestMatch(f.descriptor);
-          const person = PEOPLE.find(p => p.name === m.label);
-          const b = f.detection.box;
-          ctx.strokeStyle = '#00e676'; ctx.lineWidth = 6;
-          ctx.strokeRect(b.x, b.y, b.width, b.height);
-          ctx.font = "bold 32px sans-serif";
-          const nameText = person ? person.name : "Unknown";
-          const infoText = person ? person[mode] : "";
+      ctx.clearRect(0,0,w,h);
+
+      for (const f of faces){
+        const m = matcher.findBestMatch(f.descriptor);
+        const person = PEOPLE.find(p => p.name === m.label);
+        const d = f.detection.box;
+        const b = { x:(d.x-ox)/SCALE, y:(d.y-oy)/SCALE,
+                    width:d.width/SCALE, height:d.height/SCALE };
+        ctx.strokeStyle = '#00e676'; ctx.lineWidth = 6;
+        ctx.strokeRect(b.x, b.y, b.width, b.height);
+        ctx.font = "bold 32px sans-serif";
+        const nameText = person ? person.name : "Unknown";
+        const infoText = person ? person[mode] : "";
+        const topY = Math.max(44, b.y);
+        ctx.fillStyle = '#00e676';
+        ctx.fillRect(b.x, topY - 44, ctx.measureText(nameText).width + 16, 44);
+        ctx.fillStyle = '#000';
+        ctx.fillText(nameText, b.x + 8, topY - 11);
+        if (infoText){
+          const botY = Math.min(h - 44, b.y + b.height);
           ctx.fillStyle = '#00e676';
-          ctx.fillRect(b.x, b.y - 44, ctx.measureText(nameText).width + 16, 44);
+          ctx.fillRect(b.x, botY, ctx.measureText(infoText).width + 16, 44);
           ctx.fillStyle = '#000';
-          ctx.fillText(nameText, b.x + 8, b.y - 11);
-          if (infoText){
-            ctx.fillStyle = '#00e676';
-            ctx.fillRect(b.x, b.y + b.height, ctx.measureText(infoText).width + 16, 44);
-            ctx.fillStyle = '#000';
-            ctx.fillText(infoText, b.x + 8, b.y + b.height + 33);
-          }
+          ctx.fillText(infoText, b.x + 8, botY + 33);
         }
       }
     }
